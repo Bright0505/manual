@@ -12,7 +12,7 @@
 8. [推薦配置組合](#推薦配置組合)
 9. [監控記憶體釋放效果](#監控記憶體釋放效果)
 10. [注意事項與最佳實踐](#注意事項與最佳實踐)
-11. [三種硬體方案的記憶體釋放建議](#三種硬體方案的記憶體釋放建議)
+11. [四種硬體方案的記憶體釋放建議](#四種硬體方案的記憶體釋放建議)
 12. [快速決策表](#快速決策表)
 13. [總結](#總結)
 
@@ -20,7 +20,7 @@
 
 ## 概述
 
-SQL Anywhere 10 可以透過多種方式設定定期釋放記憶體，以優化系統資源使用。本指南提供 5 種主要方法，以及針對不同硬體配置的建議。
+SQL Anywhere 10 可以透過多種方式設定定期釋放記憶體，以優化系統資源使用。本指南提供 5 種主要方法，以及針對不同硬體配置（16GB / 32GB / 128GB / 320GB）的建議。
 
 ---
 
@@ -42,7 +42,12 @@ dbsrv10 -c 12288M -ch 3072M -ca 1 -gp 8192 -gm 100 -ti 7200 -tl 3600 -x tcpip{po
 dbsrv10 -c 20480M -ch 8192M -ca 1 -gp 8192 -gm 100 -ti 7200 -tl 3600 -x tcpip{port=2638;DOBROAD=NO;MAXSIZE=65535} -n bth001_server -o "D:\h001db\logs\trcrmis.log" "D:\h001db\trcrmis.db"
 ```
 
-#### 方案 C (320GB) - 啟用動態調整
+#### 方案 C (128GB) - 啟用動態調整
+```bash
+dbsrv10 -c 98304M -ch 16384M -ca 1 -gp 8192 -gm 100 -ti 7200 -tl 3600 -x tcpip{port=2638;DOBROAD=NO;MAXSIZE=65535} -n bth001_server -o "D:\h001db\logs\trcrmis.log" "D:\h001db\trcrmis.db"
+```
+
+#### 方案 D (320GB) - 啟用動態調整
 ```bash
 dbsrv10 -c 262144M -ch 32768M -ca 1 -gp 8192 -gm 100 -ti 7200 -tl 3600 -x tcpip{port=2638;DOBROAD=NO;MAXSIZE=65535} -n bth001_server -o "D:\h001db\logs\trcrmis.log" "D:\h001db\trcrmis.db"
 ```
@@ -90,7 +95,8 @@ dbsrv10 -c 20480M -gm 8192 -ca 1 -ch 8192M -gp 8192 -gm 100 -ti 7200 -tl 3600 -x
 |------|--------------|---------------|---------|
 | **A (16GB)** | 12288M (12GB) | 6144M (6GB) | 6-12GB |
 | **B (32GB)** | 20480M (20GB) | 10240M (10GB) | 10-20GB |
-| **C (320GB)** | 262144M (256GB) | 131072M (128GB) | 128-256GB |
+| **C (128GB)** | 98304M (96GB) | 49152M (48GB) | 48-96GB |
+| **D (320GB)** | 262144M (256GB) | 131072M (128GB) | 128-256GB |
 
 ---
 
@@ -485,7 +491,7 @@ endlocal
 
 ---
 
-## 三種硬體方案的記憶體釋放建議
+## 四種硬體方案的記憶體釋放建議
 
 ### 方案 A (16GB) - 積極釋放
 
@@ -511,7 +517,37 @@ dbsrv10 -c 20480M -gm 10240 -ca 1 -ch 8192M -gp 8192 -gm 100 -ti 3600 -tl 1800 -
 schtasks /create /tn "SQL Memory Release B" /tr "D:\h001db\scripts\release_memory.bat" /sc daily /st 02:00 /ru SYSTEM
 ```
 
-### 方案 C (320GB) - 保守釋放
+### 方案 C (128GB) - 標準釋放
+
+**啟動參數**:
+```bash
+dbsrv10 -c 98304M -gm 49152 -ca 1 -ch 16384M -gp 8192 -gm 100 -ti 3600 -tl 1800 -x tcpip{port=2638;DOBROAD=NO;MAXSIZE=65535} -n bth001_server -o "D:\h001db\logs\trcrmis.log" "D:\h001db\trcrmis.db"
+```
+
+**參數說明**:
+
+| 參數 | 值 | 說明 |
+|------|-----|------|
+| **-c** | 98304M (96GB) | 最大快取，約佔總記憶體 75% |
+| **-gm** | 49152 (48GB) | 最小快取，約佔最大快取 50% |
+| **-ca** | 1 | 啟用動態調整 |
+| **-ch** | 16384M (16GB) | 快取提示大小 |
+| **-ti** | 3600 (1小時) | 空閒超時 |
+| **-tl** | 1800 (30分) | 存活超時 |
+
+**排程**：每天凌晨 2:00
+```bat
+schtasks /create /tn "SQL Memory Release C" /tr "D:\h001db\scripts\release_memory.bat" /sc daily /st 02:00 /ru SYSTEM
+```
+
+**128GB 最佳化建議**:
+- 128GB 屬於中高階記憶體配置，建議將 75% (96GB) 分配給快取
+- 啟用動態調整 (`-ca 1`)，讓系統在記憶體壓力時自動收縮
+- 最小快取設定為 48GB，確保核心資料始終駐留記憶體
+- 排程任務設定為每天凌晨執行，平衡效能與記憶體回收
+- 若為專用資料庫伺服器，可考慮將 `-ca` 設為 0 並將最大快取提升至 112GB (114688M)
+
+### 方案 D (320GB) - 保守釋放
 
 **啟動參數**（不啟用動態調整）:
 ```bash
@@ -520,7 +556,7 @@ dbsrv10 -c 262144M -ca 0 -ch 32768M -gp 8192 -gm 100 -ti 7200 -tl 3600 -x tcpip{
 
 **排程**：每週日凌晨 3:00
 ```bat
-schtasks /create /tn "SQL Memory Release C" /tr "D:\h001db\scripts\advanced_memory_release.bat" /sc weekly /d SUN /st 03:00 /ru SYSTEM
+schtasks /create /tn "SQL Memory Release D" /tr "D:\h001db\scripts\advanced_memory_release.bat" /sc weekly /d SUN /st 03:00 /ru SYSTEM
 ```
 
 ---
@@ -559,14 +595,17 @@ schtasks /create /tn "SQL Memory Release C" /tr "D:\h001db\scripts\advanced_memo
 |------|---------|
 | **方案 A (16GB)** | 每 6 小時或每天 |
 | **方案 B (32GB)** | 每天凌晨 |
-| **方案 C (320GB)** | 每週一次 |
+| **方案 C (128GB)** | 每天凌晨 |
+| **方案 D (320GB)** | 每週一次 |
 
 ---
 
-**文件版本**: 1.0  
-**建立日期**: 2026-01-08  
-**適用版本**: SQL Anywhere 10  
-**文件狀態**: 正式發布  
+**文件版本**: 1.1
+**建立日期**: 2026-01-08
+**更新日期**: 2026-02-06
+**適用版本**: SQL Anywhere 10
+**文件狀態**: 正式發布
+**更新記錄**: 新增 128GB RAM 硬體方案優化配置  
 
 ---
 
